@@ -1,24 +1,18 @@
-# DHPVS: Dual-Hemispherical Photometric Visual Servoing
-[Nathan Crombez](http://nathancrombez.free.fr/), [Jocelyn Buisson](https://www.ciad-lab.fr/jocelyn_buisson/), [Antoine N. André](https://antoineandre.github.io/), [Guillaume Caron](https://home.mis.u-picardie.fr/~g-caron), IEEE Robotics and Autonomous Letters (RA-L), 2024
+# DHPGMPVS: Dual-Hemispherical Photometric Gaussian Mixtures-based Visual Servoing
 
-[[Paper]](http://nathancrombez.free.fr/) [[Video]](https://www.youtube.com/watch?v=hoYNN9570LE)
+Adaptation of [DHPVS](https://github.com/NathanCrombez/DHPVS) from the Photometric feature to the Photometric Gaussian Mixtures feature using the [libPeR](https://github.com/PerceptionRobotique/libPeR) library (its public part is [libPeR_base](https://github.com/PerceptionRobotique/libPeR_base)). 
 
 ### 1. Description
-**DHPVS** is an extension of photometric visual servoing to 360-degree optical rigs
-composed of two wide-angle lenses oriented in opposite directions.
-The photometric visual feature coupled to dual-hemispherical
+**DHPGMVS** is a double extension of photometric Gaussian mixtures-based visual servoing, first from the perspective camera to using a camera of wide-angle lens (e.g. 180-degree field-of-field) to control the robot motion, second to 360-degree optical rigs composed of two wide-angle lenses pointed to opposite directions.
+The photometric Gaussian mixture visual feature coupled to dual-hemispherical
 acquisitions that contain the whole surrounding scene provide
-useful complementary information, showing large convergence domains,
-straighter camera trajectories, high accuracy and a high degree of 
-robustness to various perturbations.
-
-![alt text](https://raw.githubusercontent.com/NathanCrombez/DHPVS/main/img/DHPVS.gif)
+useful complementary information. 
 
 ### 3. Build
 ```bash
 sudo apt install ros-noetic-visp ros-noetic-visp-bridge
 cd ~/catkin_ws/src/
-git clone https://github.com/NathanCrombez/DHPVS
+git clone https://github.com/GuicarMIS/DHPGMVS
 cd ..
 catkin_make
 ```
@@ -45,24 +39,37 @@ Parameter ξ is expected to be the fifth element of the array D in the sensor_ms
 ### 5. Usage
 When all is set, simply launch: 
 ```bash
-roslaunch DHPVS DHPVS.launch
+roslaunch DHPPGMVS DHPPGMVS.launch
 ```
 
 ### 6. Citation
 
-For further details, please see our paper and if you find our work usefull, please cite:
+For further details and citation, please see our papers:
 ```
 @article{DHPVS,
   author={Crombez, Nathan and Buisson, Jocelyn and André, Antoine N. and Caron, Guillaume},
   journal={IEEE Robotics and Automation Letters}, 
   title={Dual-Hemispherical Photometric Visual Servoing}, 
   year={2024},
-  volume={},
-  number={},
-  pages={1-8},
+  volume={9},
+  number={5},
+  pages={4170-4177},
   doi={10.1109/LRA.2024.3375114}
+}
+```
+and
+```
+@article{PGMVS,
+  author={Crombez, Nathan and Mouaddib, El Mustapha and Caron, Guillaume and Chaumette, Francois},
+  journal={IEEE Transactions on Robotics}, 
+  title={Visual Servoing with Photometric Gaussian Mixtures as Dense Feature}, 
+  year={2019},
+  volume={35},
+  number={1},
+  pages={49-63},
+  doi={10.1109/TRO.2018.2876765}
 }
 ```
 
 ### 7. Acknowledgement
-This work was supported by AIST, ITH department international collaboration project [DVS-straight](https://unit.aist.go.jp/jrl-22022/en/projects/project-dvsstraight.html) (R3-I-02, 2021-2025).
+This work is supported by AIST, ITH department international collaboration project [DVS-straight](https://unit.aist.go.jp/jrl-22022/en/projects/project-dvsstraight.html) (R3-I-02, 2021-2025).
