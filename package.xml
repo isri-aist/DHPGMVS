@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>DHPVS</name>
+  <name>DHPGMVS</name>
   <version>1.0.0</version>
-  <description>The Dual-Hemispherical Photometric Visual Servoing package</description>
+  <description>The Dual-Hemispherical Photometric Gaussian Mixture-based Visual Servoing package</description>
 
 
-  <maintainer email="nathan.crombez@utbm.fr">Nathan Crombez</maintainer>
+  <maintainer email="guillaume.caron@u-picardie.fr">Guillaume Caron</maintainer>
   <license>GPLv3</license>
-  <author  email="nathan.crombez@utbm.fr">Nathan Crombez</author>
+  <author  email="guillaume.caron@u-picardie.fr">Guillaume Caron</author>
 
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>roscpp</build_depend>
@@ -15,17 +15,20 @@
   <build_depend>std_msgs</build_depend>
   <build_depend>sensor_msgs</build_depend>
   <build_depend>message_filters</build_depend>
+  <build_depend>visp_bridge</build_depend>
 
   <build_export_depend>roscpp</build_export_depend>
   <build_export_depend>rospy</build_export_depend>
   <build_export_depend>std_msgs</build_export_depend>
   <build_export_depend>sensor_msgs</build_export_depend>
   <build_export_depend>message_filters</build_export_depend>
+  <build_export_depend>visp_bridge</build_export_depend>
 
   <exec_depend>roscpp</exec_depend>
   <exec_depend>rospy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>message_filters</exec_depend>
+  <exec_depend>visp_bridge</exec_depend>
 
 </package>

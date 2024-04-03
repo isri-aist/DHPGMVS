@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(DHPVS)
+project(DHPGMVS)
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
@@ -12,6 +12,11 @@ find_package(catkin REQUIRED COMPONENTS
 )
 find_package(VISP 3 REQUIRED)
 
+find_package(PER REQUIRED per_core per_io per_features per_sensor_pose_estimation per_estimation)
+if(PER_FOUND)
+  include(${PER_USE_FILE})
+endif(PER_FOUND)
+
 catkin_package(
 )
 
@@ -19,13 +24,12 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-
-set(SOURCES nodes/DHPVS.cpp )
+set(SOURCES nodes/DHPGMVS.cpp )
 add_executable(
-        DHPVS
+        DHPGMVS
         ${SOURCES}
 )
 target_link_libraries(
-        DHPVS
+        DHPGMVS
         ${catkin_LIBRARIES}
 )

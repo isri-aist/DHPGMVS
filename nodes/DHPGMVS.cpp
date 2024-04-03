@@ -1,8 +1,9 @@
 /*
- * DHPVS: Dual-Hemispherical Photometric Visual Servoing
- * Author: Nathan Crombez (nathan.crombez@utbm.fr)
- * Institution: CIAD-UTBM
- * Date: January 2024
+ * DHPGMVS: Dual-Hemispherical Photometric Gaussian Mixtures-based Visual Servoing
+ * Authors: Guillaume Caron (guillaume.caron@u-picardie.fr)
+ *          Nathan Crombez (nathan.crombez@utbm.fr)
+ * Institutions: CNRS-AIST JRL / UTBM CIAD
+ * Date: April 2024, January 2024
  */
 
 ////ROS
@@ -33,7 +34,19 @@
 #include <visp/vpPlot.h>
 #include <visp3/core/vpImageFilter.h>
 
+////libPeR
+//Camera type considered
+#include <per/prOmni.h>
+//Acquisition model
+#include <per/prRegularlySampledCPImage.h>
+//Visual features
+#include <per/prPhotometricnnGMS.h>
+#include <per/prFeaturesSet.h>
+#include <per/prSSDCmp.h>
+//Generic Visual Servo Control tools 
+#include <per/prCameraPoseEstim.h>
 
+#define INTERPTYPE prInterpType::IMAGEPLANE_BILINEAR
 
 ////ROBOT
 ros::Publisher robotVelocityPub, robotPosePub;
@@ -41,9 +54,10 @@ ros::Publisher robotVelocityPub, robotPosePub;
 ////CAMERA
 typedef struct {
     int height, width;
-    float au, av;
+    /*float au, av;
     float u0, v0;
-    float xi;
+    float xi;*/
+    prOmni cam;
     vpHomogeneousMatrix cMf;
 } cameraParameters;
 cameraParameters rightCameraParameters, leftCameraParameters;
@@ -64,6 +78,27 @@ int iter;
 double gain;
 bool vsStarted;
 
+// libPeR's desired visual features for visual servoing
+prRegularlySampledCPImage<unsigned char> *IP_des_right, *IP_des_left;
+prRegularlySampledCPImage<float> *GP_right, *GP_left;
+prFeaturesSet<prCartesian2DPointVec, prPhotometricnnGMS<prCartesian2DPointVec>, prRegularlySampledCPImage > fSet_des_right, fSet_des_left;
+prPhotometricnnGMS<prCartesian2DPointVec> *GP_sample_des_right, *GP_sample_des_left;
+
+// libPeR's current visual features for visual servoing
+prPhotometricnnGMS<prCartesian2DPointVec> *GP_sample_right, *GP_sample_left;
+prRegularlySampledCPImage<unsigned char> *IP_cur_right, *IP_cur_left;
+prFeaturesSet<prCartesian2DPointVec, prPhotometricnnGMS<prCartesian2DPointVec>, prRegularlySampledCPImage > fSet_cur_right, fSet_cur_left;
+
+// libPeR's visual servoing tasks (will be merged Crombez' style)
+prCameraPoseEstim<prFeaturesSet<prCartesian2DPointVec, prPhotometricnnGMS<prCartesian2DPointVec>, prRegularlySampledCPImage >, 
+                prSSDCmp<prCartesian2DPointVec, prPhotometricnnGMS<prCartesian2DPointVec> > > servo_right, servo_left; 
+
+// other LibPeR's variables
+double lambda_g;
+bool updateSampler;
+bool poseJacobianCompute;
+bool robust; //to activate the M-Estimator
+
 ////OTHERS
 ros::Time t;
 bool verbose;
@@ -71,10 +106,10 @@ int qSize;
 
 ////Main VS loop (callback)
 void camerasImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &rightImsg, const sensor_msgs::Image::ConstPtr &leftImsg, const geometry_msgs::PoseStamped::ConstPtr &robotPoseMsg);
-////DHP error
-void computeDHPErrorVector(vpImage<unsigned char> rightI, vpImage<unsigned char> rightId, vpImage<unsigned char> leftI, vpImage<unsigned char> leftId, vpColVector &e);
-////DHP interaction matrix
-void computeDHPInteractionMatrix(vpImage<unsigned char> rightI, cameraParameters rightCamParam, vpImage<unsigned char> leftI, cameraParameters leftCamParam, vpMatrix &L, double Z=1.0);
+////DHPGM error
+void computeDHPGMErrorVector(vpColVector &e_right, vpColVector &e_left, vpColVector &e);
+////DHPGM interaction matrix
+void computeDHPGMInteractionMatrix(vpMatrix &L_right, cameraParameters rightCamParam,  vpMatrix &L_left, cameraParameters leftCamParam, vpMatrix &L);
 
 ////Camera's poses initialization
 void cameraPosesInitialization();
@@ -86,7 +121,7 @@ cameraParameters cameraInfoToCameraParam(sensor_msgs::CameraInfo msg);
 
 
 int main(int argc, char **argv){
-    ros::init(argc, argv, "DHPVS", ros::init_options::NoSigintHandler);
+    ros::init(argc, argv, "DHPGMVS", ros::init_options::NoSigintHandler);
     if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug) ) {
         ros::console::notifyLoggerLevelsChanged();
     }
@@ -103,21 +138,21 @@ int main(int argc, char **argv){
     Z = nh.param("Z", 1.0);
 
     ////Get right and left cameras intrinsic parameters
-    rightCameraParameters = cameraInfoToCameraParam(*ros::topic::waitForMessage<sensor_msgs::CameraInfo>("/dhpvs/right_camera/camera_info", nh));
-    leftCameraParameters = cameraInfoToCameraParam(*ros::topic::waitForMessage<sensor_msgs::CameraInfo>("/dhpvs/left_camera/camera_info", nh));
+    rightCameraParameters = cameraInfoToCameraParam(*ros::topic::waitForMessage<sensor_msgs::CameraInfo>("/dhpgmvs/right_camera/camera_info", nh));
+    leftCameraParameters = cameraInfoToCameraParam(*ros::topic::waitForMessage<sensor_msgs::CameraInfo>("/dhpgmvs/left_camera/camera_info", nh));
     ////Get right and left cameras extrinsic parameters
     rightCameraParameters.cMf = vpHomogeneousMatrixFromROSTransform("/flange", "/right_camera");
     leftCameraParameters.cMf = vpHomogeneousMatrixFromROSTransform( "/flange", "/left_camera");
 
     ////Robot velocities publisher
-    robotVelocityPub = nh.advertise<geometry_msgs::Twist>("/dhpvs/robot/set_velocity", qSize);
+    robotVelocityPub = nh.advertise<geometry_msgs::Twist>("/dhpgmvs/robot/set_velocity", qSize);
 
     ////Cameras and robot synchronizer
     message_filters::Subscriber<sensor_msgs::Image> rightCameraSub, leftCameraSub;
     message_filters::Subscriber<geometry_msgs::PoseStamped> robotPoseSub;
-    rightCameraSub.subscribe(nh, "/dhpvs/right_camera/image_raw", qSize);
-    leftCameraSub.subscribe(nh, "/dhpvs/left_camera/image_raw", qSize);
-    robotPoseSub.subscribe(nh,"/dhpvs/robot/get_pose", qSize);
+    rightCameraSub.subscribe(nh, "/dhpgmvs/right_camera/image_raw", qSize);
+    leftCameraSub.subscribe(nh, "/dhpgmvs/left_camera/image_raw", qSize);
+    robotPoseSub.subscribe(nh,"/dhpgmvs/robot/get_pose", qSize);
     message_filters::Synchronizer<message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image, geometry_msgs::PoseStamped>> camerasSynchronizer(
             message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image, geometry_msgs::PoseStamped>(qSize), rightCameraSub, leftCameraSub, robotPoseSub);
     camerasSynchronizer.registerCallback(boost::bind(&camerasImageRobotPoseCallback, _1, _2, _3));
@@ -150,7 +185,10 @@ int main(int argc, char **argv){
     ////Camera desired and initial pose initialization
     cameraPosesInitialization();
 
-    ////Actually start DHPVS
+    ////libPeR's objects initializations
+    initVisualServoTasks();
+
+    ////Actually start DHPGMVS
     iter=0;
     vsStarted = true;
     t = ros::Time::now();
@@ -191,6 +229,159 @@ void cameraPosesInitialization(){
     }while(!vpDisplay::getClick(leftI, false));
 }
 
+void initVisualServoTasks()
+{
+    ////RIGHT CAMERA
+    // 2. VS objects initialization, considering the pose control of a perspective camera from the feature set of photometric non-normalized Gaussian mixture 2D samples compared thanks to the SSD
+    servo_right.setdof(true, true, true, true, true, true);
+    servo_right.setSensor(rightCameraParameters.cam);
+
+    // desired visual feature built from the image
+    //prepare the desired image 
+    IP_des_right = new prRegularlySampledCPImage<unsigned char>(rightCameraParameters.height, rightCameraParameters.width); //the regularly sample planar image to be set from the acquired/loaded perspective image
+    IP_des_right->setInterpType(INTERPTYPE);
+    IP_des_right->buildFrom(rightId, rightCameraParameters.cam); 
+
+    GP_right = new prRegularlySampledCPImage<float>(rightCameraParameters.height, rightCameraParameters.width); //contient tous les pr2DCartesianPointVec (ou prFeaturePoint) u_g et fera GS_sample.buildFrom(IP_des, u_g);
+
+    GP_sample_des_right = new prPhotometricnnGMS<prCartesian2DPointVec>(lambda_g);
+
+    fSet_des_right.buildFrom(*IP_des_right, *GP_right, *GP_sample_des_right, false, true); // Goulot !
+
+    /*
+    m_logfile << "des built" << endl;
+    if(m_pub_diffFeaturesImage || m_pub_desiredFeaturesImage)
+    {
+        PGM_des_f.resize(m_height, m_width, true);
+        PGM_des_u.resize(m_height, m_width, true);
+        fSet_des.sampler.toImage(PGM_des_f, pp, _camera);
+        vpImageConvert::convert(PGM_des_f, PGM_des_u);
+
+        m_logfile << "convert des " << PGM_des_u.getWidth() << " " << PGM_des_u.getHeight() << endl;
+    }
+
+    if(m_pub_desiredFeaturesImage)
+    {
+        m_desiredFeaturesImage = visp_bridge::toSensorMsgsImage(PGM_des_u);
+        m_desiredFeaturesImage_pub.publish(m_desiredFeaturesImage);
+    }
+    */
+
+    servo_right.buildFrom(fSet_des_right);
+
+    servo_right.initControl(gain, Z);
+
+	// current visual feature built from the image
+    GP_sample_right = new prPhotometricnnGMS<prCartesian2DPointVec>(lambda_g);
+
+    // Current features set setting from the current image
+    IP_cur_right = new prRegularlySampledCPImage<unsigned char>(rightCameraParameters.height, rightCameraParameters.width);
+    IP_cur_right->setInterpType(INTERPTYPE);
+    IP_cur_right->buildFrom(rightI, rightCameraParameters.cam); 
+    
+    fSet_cur_right.buildFrom(*IP_cur_right, *GP_right, *GP_sample_right, poseJacobianCompute, updateSampler); // Goulot !
+
+    /*
+    m_logfile << "cur built " << m_height << " " << m_width << endl;
+    if(m_pub_diffFeaturesImage || m_pub_featuresImage)
+    {
+        PGM_cur_f.resize(m_height, m_width, true);
+        PGM_cur_u.resize(m_height, m_width, true);
+        fSet_cur.sampler.toImage(PGM_cur_f, pp, _camera);
+        vpImageConvert::convert(PGM_cur_f, PGM_cur_u);
+
+        m_logfile << "convert cur " << PGM_cur_u.getWidth() << " " << PGM_cur_u.getHeight() << endl;
+    }
+
+    if(m_pub_diffFeaturesImage)
+    {
+        m_difference_pgm.resize(m_height, m_width, true);
+    }
+
+    if(m_pub_diffImage)
+    {
+        m_difference_image.resize(m_height, m_width, true);
+    }
+    */
+
+    //vsInitialized = true;
+
+   ////LEFT CAMERA
+    // 2. VS objects initialization, considering the pose control of a perspective camera from the feature set of photometric non-normalized Gaussian mixture 2D samples compared thanks to the SSD
+    servo_left.setdof(true, true, true, true, true, true);
+    servo_left.setSensor(leftCameraParameters.cam);
+
+    // desired visual feature built from the image
+    //prepare the desired image 
+    IP_des_left = new prRegularlySampledCPImage<unsigned char>(leftCameraParameters.height, leftCameraParameters.width); //the regularly sample planar image to be set from the acquired/loaded perspective image
+    IP_des_left->setInterpType(INTERPTYPE);
+    IP_des_left->buildFrom(leftId, leftCameraParameters.cam); 
+
+    GP_left = new prRegularlySampledCPImage<float>(leftCameraParameters.height, leftCameraParameters.width); //contient tous les pr2DCartesianPointVec (ou prFeaturePoint) u_g et fera GS_sample.buildFrom(IP_des, u_g);
+
+    GP_sample_des_left = new prPhotometricnnGMS<prCartesian2DPointVec>(lambda_g);
+
+    fSet_des_left.buildFrom(*IP_des_left, *GP_left, *GP_sample_des_left, false, true); // Goulot !
+
+    /*
+    m_logfile << "des built" << endl;
+    if(m_pub_diffFeaturesImage || m_pub_desiredFeaturesImage)
+    {
+        PGM_des_f.resize(m_height, m_width, true);
+        PGM_des_u.resize(m_height, m_width, true);
+        fSet_des.sampler.toImage(PGM_des_f, pp, _camera);
+        vpImageConvert::convert(PGM_des_f, PGM_des_u);
+
+        m_logfile << "convert des " << PGM_des_u.getWidth() << " " << PGM_des_u.getHeight() << endl;
+    }
+
+    if(m_pub_desiredFeaturesImage)
+    {
+        m_desiredFeaturesImage = visp_bridge::toSensorMsgsImage(PGM_des_u);
+        m_desiredFeaturesImage_pub.publish(m_desiredFeaturesImage);
+    }
+    */
+
+    servo_left.buildFrom(fSet_des_left);
+
+    servo_left.initControl(gain, Z);
+
+	// current visual feature built from the image
+    GP_sample_left = new prPhotometricnnGMS<prCartesian2DPointVec>(lambda_g);
+
+    // Current features set setting from the current image
+    IP_cur_left = new prRegularlySampledCPImage<unsigned char>(leftCameraParameters.height, leftCameraParameters.width);
+    IP_cur_left->setInterpType(INTERPTYPE);
+    IP_cur_left->buildFrom(leftI, leftCameraParameters.cam); 
+    
+    fSet_cur_left.buildFrom(*IP_cur_left, *GP_left, *GP_sample_left, poseJacobianCompute, updateSampler); // Goulot !
+
+    /*
+    m_logfile << "cur built " << m_height << " " << m_width << endl;
+    if(m_pub_diffFeaturesImage || m_pub_featuresImage)
+    {
+        PGM_cur_f.resize(m_height, m_width, true);
+        PGM_cur_u.resize(m_height, m_width, true);
+        fSet_cur.sampler.toImage(PGM_cur_f, pp, _camera);
+        vpImageConvert::convert(PGM_cur_f, PGM_cur_u);
+
+        m_logfile << "convert cur " << PGM_cur_u.getWidth() << " " << PGM_cur_u.getHeight() << endl;
+    }
+
+    if(m_pub_diffFeaturesImage)
+    {
+        m_difference_pgm.resize(m_height, m_width, true);
+    }
+
+    if(m_pub_diffImage)
+    {
+        m_difference_image.resize(m_height, m_width, true);
+    }
+    */
+
+    //vsInitialized = true;
+}
+
 void camerasImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &rightImsg, const sensor_msgs::Image::ConstPtr &leftImsg, const geometry_msgs::PoseStamped::ConstPtr &robotPoseMsg) {
     ////ROS to VISP
     rightI = visp_bridge::toVispImage(*rightImsg);
@@ -209,10 +400,19 @@ void camerasImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &rightImsg
         vpDisplay::display(leftIdiff); vpDisplay::flush(leftIdiff);
         vpDisplay::display(rightIdiff); vpDisplay::flush(rightIdiff);
 
+        ////Update left and right camera features
+        IP_right->buildFrom(rightI, rightCameraParameters.cam); 
+	    fSet_right.updateMeasurement(*IP_right, *GP_right, *GP_right_sample, poseJacobianCompute, updateSampler); 
+        servo_right.interactionAndError(fSet_right, L_right, e_right, robust);
+
+        IP_left->buildFrom(leftI, leftCameraParameters.cam); 
+	    fSet_left.updateMeasurement(*IP_left, *GP_left, *GP_left_sample, poseJacobianCompute, updateSampler); 
+        servo_left.interactionAndError(fSet_left, L_left, e_left, robust);
+
         ////Compute interaction matrix
-        computeDHPInteractionMatrix(rightI,rightCameraParameters,leftI,leftCameraParameters,L, Z);
+        computeDHPGMInteractionMatrix(L_right,rightCameraParameters,L_left,leftCameraParameters,L);
         ////Compute error vector
-        computeDHPErrorVector(rightI,  rightId,  leftI, leftId, e);
+        computeDHPGMErrorVector(e_right,  e_left, e);
         ////Compute Gauss-newton control law
         v = -gain * L.pseudoInverseEigen3() * e; //Velocities expressed in the robot's flange
 
@@ -249,106 +449,33 @@ void camerasImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &rightImsg
     }
 }
 
-void computeDHPErrorVector(vpImage<unsigned char> rightI, vpImage<unsigned char> rightId, vpImage<unsigned char> leftI, vpImage<unsigned char> leftId, vpColVector &e){
-    e.resize((rightI.getRows()-20)*(rightI.getCols()-20)  + (leftI.getRows()-20)*(leftI.getCols()-20) );
-    unsigned char *ptrrightI = rightI.bitmap;
-    unsigned char *ptrrightId = rightId.bitmap;
-    unsigned char *ptrleftI = leftI.bitmap;
-    unsigned char *ptrleftId = leftId.bitmap;
-
-    int i=0;
+void computeDHPGMErrorVector(vpColVector &e_right, vpColVector &e_left, vpColVector &e)
+{
+    e.resize(e_right.getRows()+e_left.getRows());
+    
     ////RIGHT CAMERA
-    for(int v=10;v<rightI.getRows()-10;v++){
-        for(int u=10;u<rightI.getCols()-10;u++,i++) {
-            e[i] = (double)(ptrrightI[u + v * rightI.getCols()])-(double)(ptrrightId[u + v * rightI.getCols()]);
-        }
-    }
+    e.insert(0, e_right);
+
     ////LEFT CAMERA
-    for(int v=10;v<leftI.getRows()-10;v++){
-        for(int u=10;u<leftI.getCols()-10;u++,i++) {
-            e[i] = (double)(ptrleftI[u + v * leftI.getCols()])-(double)(ptrleftId[u + v * leftI.getCols()]);
-        }
-    }
+    e.insert(e_right.getRows(), e_left);
 }
 
 
-void computeDHPInteractionMatrix(vpImage<unsigned char> rightI, cameraParameters rightCamParam, vpImage<unsigned char> leftI, cameraParameters leftCamParam, vpMatrix &L, double Z){
+void computeDHPGMInteractionMatrix(vpMatrix &L_right, cameraParameters rightCamParam,  vpMatrix &L_left, cameraParameters leftCamParam, vpMatrix &L)
+{
     L.clear();
-    L.resize((rightI.getRows()-20)*(rightI.getCols()-20)  + (leftI.getRows()-20)*(leftI.getCols()-20) , 6);
+    L.resize(L_right.getRows()+L_left.getRows(), 6);
     vpVelocityTwistMatrix V;
-    vpRowVector dIdx(2);
-    vpMatrix dxdr(2,6, 0.0);
-    vpRowVector dIdr(6);
 
     ////RIGHT CAMERA
     V.buildFrom(rightCamParam.cMf.getRotationMatrix());
-    int i=0;
-    for(int v=10;v<rightI.getRows()-10;v++) {
-        for (int u=10;u<rightI.getCols()-10;u++,i++) {
-            double xi = rightCamParam.xi;
-            dIdx[0] = -rightCamParam.au * vpImageFilter::derivativeFilterX(rightI, v, u);
-            dIdx[1] = -rightCamParam.au * vpImageFilter::derivativeFilterY(rightI, v, u);
-            double x = (double)((1.0*u-rightCamParam.u0)/rightCamParam.au);
-            double y = (double)((1.0*v-rightCamParam.v0)/rightCamParam.av);
-            double srac = 1.0+(1.0-xi*xi)*(x*x + y*y);
-            dxdr.resize(2,6,true);
-            if(srac>=0.0) {
-                double fact = (xi + sqrt(srac)) / (x*x + y*y + 1.0);
-                double Zs = fact - xi;
-                if(Zs !=0){
-                    double rho = Z/Zs;
-                    dxdr[0][0] = -( (rho*Z + xi*Z*Z)/(rho*pow(Z + xi*rho,2)) + xi*y*y/rho) ;
-                    dxdr[0][1] = xi*x*y/rho;
-                    dxdr[0][2] = x * ((rho+xi*Z) / (rho*(Z + xi*rho)));
-                    dxdr[0][3] = x*y;
-                    dxdr[0][4] = -( x*x + (Z*Z + Z*xi*rho)/(pow(Z + xi*rho,2)) );
-                    dxdr[0][5] = y;
-                    dxdr[1][0] = xi*x*y/rho;
-                    dxdr[1][1] = -( (rho*Z + xi*Z*Z)/(rho*pow(Z + xi*rho,2)) + xi*x*x/rho );
-                    dxdr[1][2] = y * ( (rho+xi*Z)/(rho*(Z + xi*rho)) );
-                    dxdr[1][3] = ( (Z*Z + Z*xi*rho)/(pow(Z + xi*rho,2)) ) + y*y;
-                    dxdr[1][4] = -x*y;
-                    dxdr[1][5] = -x;
-                }
-            }
-            dIdr = dIdx * dxdr;
-            L.insert(dIdr*V, i, 0);
-        }
-    }
+    
+    L.insert(L_right*V, 0, 0);
+
     ////LEFT CAMERA
     V.buildFrom(leftCamParam.cMf.getRotationMatrix());
-    for(int v=10;v<leftI.getRows()-10;v++) {
-        for (int u=10;u<leftI.getCols()-10;u++,i++) {
-            double xi = leftCamParam.xi;
-            dIdx[0] = -leftCamParam.au * vpImageFilter::derivativeFilterX(leftI, v, u);
-            dIdx[1] = -leftCamParam.au * vpImageFilter::derivativeFilterY(leftI, v, u);
-            double x = (double)((1.0*u-leftCamParam.u0)/leftCamParam.au);
-            double y = (double)((1.0*v-leftCamParam.v0)/leftCamParam.av);
-            double srac = 1.0+(1.0-xi*xi)*(x*x + y*y);
-            dxdr.resize(2,6,true);
-            if(srac>=0.0) {
-                double fact = (xi + sqrt(srac)) / (x*x + y*y + 1.0);
-                double Zs = fact - xi;
-                if(Zs !=0){
-                    double rho = Z/Zs;
-                    dxdr[0][0] = -( (rho*Z + xi*Z*Z)/(rho*pow(Z + xi*rho,2)) + xi*y*y/rho) ;
-                    dxdr[0][1] = xi*x*y/rho;
-                    dxdr[0][2] = x * ((rho+xi*Z) / (rho*(Z + xi*rho)));
-                    dxdr[0][3] = x*y;
-                    dxdr[0][4] = -( x*x + (Z*Z + Z*xi*rho)/(pow(Z + xi*rho,2)) );
-                    dxdr[0][5] = y;
-                    dxdr[1][0] = xi*x*y/rho;
-                    dxdr[1][1] = -( (rho*Z + xi*Z*Z)/(rho*pow(Z + xi*rho,2)) + xi*x*x/rho );
-                    dxdr[1][2] = y * ( (rho+xi*Z)/(rho*(Z + xi*rho)) );
-                    dxdr[1][3] = ( (Z*Z + Z*xi*rho)/(pow(Z + xi*rho,2)) ) + y*y;
-                    dxdr[1][4] = -x*y;
-                    dxdr[1][5] = -x;
-                }
-            }
-            dIdr = dIdx * dxdr;
-            L.insert(dIdr*V, i, 0);
-        }
-    }
+
+    L.insert(L_left*V, L_right.getRows(), 0);
 }
 
 
@@ -381,11 +508,7 @@ cameraParameters cameraInfoToCameraParam(sensor_msgs::CameraInfo msg){
     cameraParameters cam;
     cam.height = msg.height;
     cam.width = msg.width;
-    cam.au = msg.K[0];
-    cam.av = msg.K[4];
-    cam.u0 = msg.K[2];
-    cam.v0 = msg.K[5];
-    cam.xi = msg.D[4];
+    cam.cam.init(msg.K[0], msg.K[4], msg.K[2], msg.K[5], msg.D[4]);
     return cam;
 }
 
