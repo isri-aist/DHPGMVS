@@ -135,10 +135,15 @@ int main(int argc, char **argv){
     vsStarted = false;
     v.resize(6);
 
+    updateSampler = true;
+    poseJacobianCompute = true;
+
     ////Get parameters
     verbose = nh.param("verbose", 1);
     gain = nh.param("gain", 1.0);
     Z = nh.param("Z", 1.0);
+    lambda_g = nh.param("lambda_g", 1.0);
+    robust = nh.param("robust", false);
 
     ////Get right and left cameras intrinsic parameters
     rightCameraParameters = cameraInfoToCameraParam(*ros::topic::waitForMessage<sensor_msgs::CameraInfo>("/dhpgmvs/right_camera/camera_info", nh));
@@ -188,9 +193,11 @@ int main(int argc, char **argv){
     ////Camera desired and initial pose initialization
     cameraPosesInitialization();
 
+ROS_WARN("initVisualServoTasks");
     ////libPeR's objects initializations
     initVisualServoTasks();
 
+ROS_WARN("initVisualServoTasks done");
     ////Actually start DHPGMVS
     iter=0;
     vsStarted = true;
@@ -391,7 +398,11 @@ void camerasImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &rightImsg
     leftI = visp_bridge::toVispImage(*leftImsg);
     currentRobotPose = vpPoseVector(visp_bridge::toVispHomogeneousMatrix(robotPoseMsg->pose));
 
+    ROS_WARN("VS");
+
     if (vsStarted) {
+        ROS_WARN("VS");
+
         if(robotPoseMsg->header.stamp<=t)   //Prevent ROS synchro issues
              return;
 

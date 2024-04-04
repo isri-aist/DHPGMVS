@@ -39,7 +39,7 @@ Parameter ξ is expected to be the fifth element of the array D in the sensor_ms
 ### 5. Usage
 When all is set, simply launch: 
 ```bash
-roslaunch DHPPGMVS DHPPGMVS.launch
+roslaunch DHPGMVS DHPGMVS.launch
 ```
 
 ### 6. Citation
