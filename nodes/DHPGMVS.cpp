@@ -71,8 +71,8 @@ vpPlot plot;
 
 ////VISUAL SERVOING
 vpPoseVector desiredRobotPose, currentRobotPose, initialRobotPose;
-vpMatrix L;
-vpColVector e, v;
+vpMatrix L, L_right, L_left;
+vpColVector e, e_right, e_left, v;
 double Z;
 int iter;
 double gain;
@@ -88,6 +88,7 @@ prPhotometricnnGMS<prCartesian2DPointVec> *GP_sample_des_right, *GP_sample_des_l
 prPhotometricnnGMS<prCartesian2DPointVec> *GP_sample_right, *GP_sample_left;
 prRegularlySampledCPImage<unsigned char> *IP_cur_right, *IP_cur_left;
 prFeaturesSet<prCartesian2DPointVec, prPhotometricnnGMS<prCartesian2DPointVec>, prRegularlySampledCPImage > fSet_cur_right, fSet_cur_left;
+prPhotometricnnGMS<prCartesian2DPointVec> *GP_sample_cur_right, *GP_sample_cur_left;
 
 // libPeR's visual servoing tasks (will be merged Crombez' style)
 prCameraPoseEstim<prFeaturesSet<prCartesian2DPointVec, prPhotometricnnGMS<prCartesian2DPointVec>, prRegularlySampledCPImage >, 
@@ -110,6 +111,8 @@ void camerasImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &rightImsg
 void computeDHPGMErrorVector(vpColVector &e_right, vpColVector &e_left, vpColVector &e);
 ////DHPGM interaction matrix
 void computeDHPGMInteractionMatrix(vpMatrix &L_right, cameraParameters rightCamParam,  vpMatrix &L_left, cameraParameters leftCamParam, vpMatrix &L);
+
+void initVisualServoTasks();
 
 ////Camera's poses initialization
 void cameraPosesInitialization();
@@ -234,13 +237,13 @@ void initVisualServoTasks()
     ////RIGHT CAMERA
     // 2. VS objects initialization, considering the pose control of a perspective camera from the feature set of photometric non-normalized Gaussian mixture 2D samples compared thanks to the SSD
     servo_right.setdof(true, true, true, true, true, true);
-    servo_right.setSensor(rightCameraParameters.cam);
+    servo_right.setSensor(&(rightCameraParameters.cam));
 
     // desired visual feature built from the image
     //prepare the desired image 
     IP_des_right = new prRegularlySampledCPImage<unsigned char>(rightCameraParameters.height, rightCameraParameters.width); //the regularly sample planar image to be set from the acquired/loaded perspective image
     IP_des_right->setInterpType(INTERPTYPE);
-    IP_des_right->buildFrom(rightId, rightCameraParameters.cam); 
+    IP_des_right->buildFrom(rightId, &(rightCameraParameters.cam)); 
 
     GP_right = new prRegularlySampledCPImage<float>(rightCameraParameters.height, rightCameraParameters.width); //contient tous les pr2DCartesianPointVec (ou prFeaturePoint) u_g et fera GS_sample.buildFrom(IP_des, u_g);
 
@@ -277,7 +280,7 @@ void initVisualServoTasks()
     // Current features set setting from the current image
     IP_cur_right = new prRegularlySampledCPImage<unsigned char>(rightCameraParameters.height, rightCameraParameters.width);
     IP_cur_right->setInterpType(INTERPTYPE);
-    IP_cur_right->buildFrom(rightI, rightCameraParameters.cam); 
+    IP_cur_right->buildFrom(rightI, &(rightCameraParameters.cam)); 
     
     fSet_cur_right.buildFrom(*IP_cur_right, *GP_right, *GP_sample_right, poseJacobianCompute, updateSampler); // Goulot !
 
@@ -309,13 +312,13 @@ void initVisualServoTasks()
    ////LEFT CAMERA
     // 2. VS objects initialization, considering the pose control of a perspective camera from the feature set of photometric non-normalized Gaussian mixture 2D samples compared thanks to the SSD
     servo_left.setdof(true, true, true, true, true, true);
-    servo_left.setSensor(leftCameraParameters.cam);
+    servo_left.setSensor(&(leftCameraParameters.cam));
 
     // desired visual feature built from the image
     //prepare the desired image 
     IP_des_left = new prRegularlySampledCPImage<unsigned char>(leftCameraParameters.height, leftCameraParameters.width); //the regularly sample planar image to be set from the acquired/loaded perspective image
     IP_des_left->setInterpType(INTERPTYPE);
-    IP_des_left->buildFrom(leftId, leftCameraParameters.cam); 
+    IP_des_left->buildFrom(leftId, &(leftCameraParameters.cam)); 
 
     GP_left = new prRegularlySampledCPImage<float>(leftCameraParameters.height, leftCameraParameters.width); //contient tous les pr2DCartesianPointVec (ou prFeaturePoint) u_g et fera GS_sample.buildFrom(IP_des, u_g);
 
@@ -352,7 +355,7 @@ void initVisualServoTasks()
     // Current features set setting from the current image
     IP_cur_left = new prRegularlySampledCPImage<unsigned char>(leftCameraParameters.height, leftCameraParameters.width);
     IP_cur_left->setInterpType(INTERPTYPE);
-    IP_cur_left->buildFrom(leftI, leftCameraParameters.cam); 
+    IP_cur_left->buildFrom(leftI, &(leftCameraParameters.cam)); 
     
     fSet_cur_left.buildFrom(*IP_cur_left, *GP_left, *GP_sample_left, poseJacobianCompute, updateSampler); // Goulot !
 
@@ -401,13 +404,13 @@ void camerasImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &rightImsg
         vpDisplay::display(rightIdiff); vpDisplay::flush(rightIdiff);
 
         ////Update left and right camera features
-        IP_right->buildFrom(rightI, rightCameraParameters.cam); 
-	    fSet_right.updateMeasurement(*IP_right, *GP_right, *GP_right_sample, poseJacobianCompute, updateSampler); 
-        servo_right.interactionAndError(fSet_right, L_right, e_right, robust);
+        IP_cur_right->buildFrom(rightI, &(rightCameraParameters.cam)); 
+	    fSet_cur_right.updateMeasurement(*IP_cur_right, *GP_right, *GP_sample_cur_right, poseJacobianCompute, updateSampler); 
+        servo_right.interactionAndError(fSet_cur_right, L_right, e_right, robust);
 
-        IP_left->buildFrom(leftI, leftCameraParameters.cam); 
-	    fSet_left.updateMeasurement(*IP_left, *GP_left, *GP_left_sample, poseJacobianCompute, updateSampler); 
-        servo_left.interactionAndError(fSet_left, L_left, e_left, robust);
+        IP_cur_left->buildFrom(leftI, &(leftCameraParameters.cam)); 
+	    fSet_cur_left.updateMeasurement(*IP_cur_left, *GP_left, *GP_sample_cur_left, poseJacobianCompute, updateSampler); 
+        servo_left.interactionAndError(fSet_cur_left, L_left, e_left, robust);
 
         ////Compute interaction matrix
         computeDHPGMInteractionMatrix(L_right,rightCameraParameters,L_left,leftCameraParameters,L);
