@@ -193,11 +193,11 @@ int main(int argc, char **argv){
     ////Camera desired and initial pose initialization
     cameraPosesInitialization();
 
-ROS_WARN("initVisualServoTasks");
+    ROS_WARN("initVisualServoTasks");
     ////libPeR's objects initializations
     initVisualServoTasks();
 
-ROS_WARN("initVisualServoTasks done");
+    ROS_WARN("initVisualServoTasks done");
     ////Actually start DHPGMVS
     iter=0;
     vsStarted = true;
@@ -288,6 +288,8 @@ void initVisualServoTasks()
     IP_cur_right = new prRegularlySampledCPImage<unsigned char>(rightCameraParameters.height, rightCameraParameters.width);
     IP_cur_right->setInterpType(INTERPTYPE);
     IP_cur_right->buildFrom(rightI, &(rightCameraParameters.cam)); 
+
+    GP_sample_cur_right = new prPhotometricnnGMS<prCartesian2DPointVec>(lambda_g);
     
     fSet_cur_right.buildFrom(*IP_cur_right, *GP_right, *GP_sample_right, poseJacobianCompute, updateSampler); // Goulot !
 
@@ -364,6 +366,8 @@ void initVisualServoTasks()
     IP_cur_left->setInterpType(INTERPTYPE);
     IP_cur_left->buildFrom(leftI, &(leftCameraParameters.cam)); 
     
+    GP_sample_cur_left = new prPhotometricnnGMS<prCartesian2DPointVec>(lambda_g);
+
     fSet_cur_left.buildFrom(*IP_cur_left, *GP_left, *GP_sample_left, poseJacobianCompute, updateSampler); // Goulot !
 
     /*
@@ -398,11 +402,8 @@ void camerasImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &rightImsg
     leftI = visp_bridge::toVispImage(*leftImsg);
     currentRobotPose = vpPoseVector(visp_bridge::toVispHomogeneousMatrix(robotPoseMsg->pose));
 
-    ROS_WARN("VS");
-
-    if (vsStarted) {
-        ROS_WARN("VS");
-
+    if (vsStarted) 
+    {
         if(robotPoseMsg->header.stamp<=t)   //Prevent ROS synchro issues
              return;
 
@@ -522,6 +523,9 @@ cameraParameters cameraInfoToCameraParam(sensor_msgs::CameraInfo msg){
     cameraParameters cam;
     cam.height = msg.height;
     cam.width = msg.width;
+
+    std::cout << msg.K[0] << " " << msg.K[4] << " " << msg.K[2] << " " << msg.K[5] << " " << msg.D[4] << std::endl;
+
     cam.cam.init(msg.K[0], msg.K[4], msg.K[2], msg.K[5], msg.D[4]);
     return cam;
 }
