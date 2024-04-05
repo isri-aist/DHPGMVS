@@ -100,6 +100,14 @@ bool updateSampler;
 bool poseJacobianCompute;
 bool robust; //to activate the M-Estimator
 
+// for robots controlled in the base frame and publishing their effector pose as a tf2
+vpVelocityTwistMatrix bVt;
+std::mutex mutex_bVt;
+bool controlInBaseFrame;
+ros::Subscriber camPose_sub; 
+void toolPoseCallback(const tf2_msgs::TFMessage& tf);
+vpHomogeneousMatrix toVispHomogeneousMatrix(const tf2_msgs::TFMessage& trans);
+
 ////OTHERS
 ros::Time t;
 bool verbose;
@@ -153,7 +161,7 @@ int main(int argc, char **argv){
     leftCameraParameters.cMf = vpHomogeneousMatrixFromROSTransform( "/flange", "/left_camera");
 
     ////Robot velocities publisher
-    robotVelocityPub = nh.advertise<geometry_msgs::Twist>("/dhpgmvs/robot/set_velocity", qSize);
+    robotVelocityPub = nh.advertise<geometry_msgs::Twist>("/dhpgmvs/robot/set_velocity", 1);
 
     ////Cameras and robot synchronizer
     message_filters::Subscriber<sensor_msgs::Image> rightCameraSub, leftCameraSub;
@@ -164,6 +172,22 @@ int main(int argc, char **argv){
     message_filters::Synchronizer<message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image, geometry_msgs::PoseStamped>> camerasSynchronizer(
             message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image, geometry_msgs::PoseStamped>(qSize), rightCameraSub, leftCameraSub, robotPoseSub);
     camerasSynchronizer.registerCallback(boost::bind(&camerasImageRobotPoseCallback, _1, _2, _3));
+
+    //to get UR pose from tf
+    std::string cameraPoseTopic;
+    nh.param("cameraPoseTopic", cameraPoseTopic, std::string(""));
+    nh.param("controlInBaseFrame", controlInBaseFrame, false);
+
+    nh.getParam("controlInBaseFrame", controlInBaseFrame);
+
+    if(controlInBaseFrame)
+	{
+		nh.getParam("cameraPoseTopic", cameraPoseTopic);
+		
+		camPose_sub = nh.subscribe(cameraPoseTopic, 1, &toolPoseCallback);
+	}
+
+
 
     ////Image displayers
     rightI.resize(rightCameraParameters.height, rightCameraParameters.width);
@@ -203,6 +227,10 @@ int main(int argc, char **argv){
     vsStarted = true;
     t = ros::Time::now();
     ros::spin();
+
+    v=0;
+    robotVelocityPub.publish(geometryTwistFromvpColVector(v));
+    ros::spinOnce();
 }
 
 void cameraPosesInitialization(){
@@ -429,7 +457,14 @@ void camerasImageRobotPoseCallback(const sensor_msgs::Image::ConstPtr &rightImsg
         ////Compute error vector
         computeDHPGMErrorVector(e_right,  e_left, e);
         ////Compute Gauss-newton control law
-        v = -gain * L.pseudoInverseEigen3() * e; //Velocities expressed in the robot's flange
+        v = gain * L.pseudoInverseEigen3() * e; //Velocities expressed in the robot's flange... or their opposite?..
+
+        if(controlInBaseFrame)
+        {
+            mutex_bVt.lock();
+			v = bVt * v;
+            mutex_bVt.unlock();
+        }
 
         ////Send velocity to robot
         robotVelocityPub.publish(geometryTwistFromvpColVector(v));
@@ -491,6 +526,49 @@ void computeDHPGMInteractionMatrix(vpMatrix &L_right, cameraParameters rightCamP
     V.buildFrom(leftCamParam.cMf.getRotationMatrix());
 
     L.insert(L_left*V, L_right.getRows(), 0);
+}
+
+void 
+toolPoseCallback(const tf2_msgs::TFMessage& tf)
+{
+    if(tf.transforms[0].child_frame_id.compare("tool0_controller") == 0)
+    {
+        vpHomogeneousMatrix bMc = /*visp_bridge::*/toVispHomogeneousMatrix(tf);
+        bMc[0][3] = bMc[1][3] = bMc[2][3] = 0;
+
+        //m_logfile << bMc << std::endl;
+        mutex_bVt.lock();
+        bVt.buildFrom(bMc);
+        mutex_bVt.unlock();
+    }
+}
+
+vpHomogeneousMatrix 
+toVispHomogeneousMatrix(const tf2_msgs::TFMessage& trans)
+{
+	vpHomogeneousMatrix mat;
+	vpTranslationVector vec(trans.transforms[0].transform.translation.x,trans.transforms[0].transform.translation.y,trans.transforms[0].transform.translation.z);
+	vpRotationMatrix rmat;
+
+	double a = trans.transforms[0].transform.rotation.w; //x
+	double b = trans.transforms[0].transform.rotation.x; //y
+	double c = trans.transforms[0].transform.rotation.y; //z
+	double d = trans.transforms[0].transform.rotation.z; //w
+	rmat[0][0] = a*a+b*b-c*c-d*d;
+	rmat[0][1] = 2*b*c-2*a*d;
+	rmat[0][2] = 2*a*c+2*b*d;
+
+	rmat[1][0] = 2*a*d+2*b*c;
+	rmat[1][1] = a*a-b*b+c*c-d*d;
+	rmat[1][2] = 2*c*d-2*a*b;
+
+	rmat[2][0] = 2*b*d-2*a*c;
+	rmat[2][1] = 2*a*b+2*c*d;
+	rmat[2][2] = a*a-b*b-c*c+d*d;
+
+	mat.buildFrom(vec,rmat);
+
+	return mat;
 }
 
 

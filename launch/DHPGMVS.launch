@@ -2,9 +2,9 @@
 <launch>
 
   <!-- ROBOT'S FLANGE TO RIGHT CAMERA TRANSFORM -->
-  <node pkg="tf" type="static_transform_publisher" name="flange2rightcamera" args="0.000 0.000 0.020 0.000 0.000 1.000 0.000 /right_camera /flange 100"/>
+  <node pkg="tf" type="static_transform_publisher" name="flange2rightcamera" args="-0.021 0.15 0.000 -0.5 -0.5 0.5 0.5 /right_camera /flange 1"/>
   <!-- ROBOT'S FLANGE TO RIGHT CAMERA TRANSFORM -->
-  <node pkg="tf" type="static_transform_publisher" name="flange2leftcamera" args="0.000 0.000 -0.020 1.000 0.000 0.000 0.000 /left_camera /flange 100"/>
+  <node pkg="tf" type="static_transform_publisher" name="flange2leftcamera" args="0.021 0.15 0.000 0.5 0.5 0.5 0.5  /left_camera /flange 1"/>
 
   <!-- DUAL-HEMISPHERICAL PHOTOMETRIC GAUSSIAN MIXTURE-BASED VISUAL SERVOING-->
   <arg name="verbose" value="1"/>
@@ -26,6 +26,9 @@
     <param name="Z" value="$(arg Z)"/>
     <param name="lambda_g" value="$(arg lambda_g)"/>
     <param name="robust" value="$(arg robust)"/>
+
+    <param name="controlInBaseFrame" type="bool" value="true"/>
+    <param name="cameraPoseTopic" type="string" value="/tf"/>
   </node>
 
 </launch>
