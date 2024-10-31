@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>DHPGMVS</name>
+  <name>dhpgmvs</name>
   <version>1.0.0</version>
   <description>The Dual-Hemispherical Photometric Gaussian Mixture-based Visual Servoing package</description>
 
@@ -9,6 +9,8 @@
   <license>GPLv3</license>
   <author  email="guillaume.caron@u-picardie.fr">Guillaume Caron</author>
 
+     <build_depend>message_generation</build_depend>
+    <exec_depend>message_runtime</exec_depend>     
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
@@ -16,6 +18,9 @@
   <build_depend>sensor_msgs</build_depend>
   <build_depend>message_filters</build_depend>
   <build_depend>visp_bridge</build_depend>
+  <build_depend>rosbag</build_depend>
+  <build_depend>dynamic_reconfigure</build_depend>
+  <build_depend>image_transport</build_depend>
 
   <build_export_depend>roscpp</build_export_depend>
   <build_export_depend>rospy</build_export_depend>
@@ -23,6 +28,8 @@
   <build_export_depend>sensor_msgs</build_export_depend>
   <build_export_depend>message_filters</build_export_depend>
   <build_export_depend>visp_bridge</build_export_depend>
+  <build_export_depend>rosbag</build_export_depend>
+  <build_export_depend>image_transport</build_export_depend>
 
   <exec_depend>roscpp</exec_depend>
   <exec_depend>rospy</exec_depend>
@@ -30,5 +37,9 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>message_filters</exec_depend>
   <exec_depend>visp_bridge</exec_depend>
+  <exec_depend>rosbag</exec_depend>
+  <exec_depend>dynamic_reconfigure</exec_depend>
+  <exec_depend>message_runtime</exec_depend>
+  <exec_depend>image_transport</exec_depend>
 
 </package>

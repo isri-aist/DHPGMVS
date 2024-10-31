@@ -8,9 +8,14 @@ The photometric Gaussian mixture visual feature coupled to dual-hemispherical
 acquisitions that contain the whole surrounding scene provide
 useful complementary information. 
 
-### 3. Build
+### 2. # Pre-requisities
+- `visp`:
 ```bash
 sudo apt install ros-noetic-visp ros-noetic-visp-bridge
+```
+- `libPeR`: https://github.com/PerceptionRobotique/libPeR  When running `catkin_make`, mind to pass the additional `cmake` parameters `-DUSE_PER=True` to make use of libPeR (otherwise PGM VS will not be available) and `-DPER_DIR=/path/to/libPeR/install/dir` to allow finding the libPeR library (in that order)
+- `differentiableImage`: to compute the initial lambda_g based on the differentiability of desired and starting image (https://github.com/GuicarMIS/differentiableImage/tree/toDual). If you don't want to use this, remove it in the cmake.
+```bash 
 cd ~/catkin_ws/src/
 git clone https://github.com/GuicarMIS/DHPGMVS
 cd ..
@@ -39,7 +44,7 @@ Parameter ξ is expected to be the fifth element of the array D in the sensor_ms
 ### 5. Usage
 When all is set, simply launch: 
 ```bash
-roslaunch DHPGMVS DHPGMVS.launch
+roslaunch dhpgmvs dhpgmvs.launch
 ```
 
 ### 6. Citation
