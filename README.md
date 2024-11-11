@@ -14,7 +14,7 @@ useful complementary information.
 sudo apt install ros-noetic-visp ros-noetic-visp-bridge
 ```
 - `libPeR`: https://github.com/PerceptionRobotique/libPeR  When running `catkin_make`, mind to pass the additional `cmake` parameters `-DUSE_PER=True` to make use of libPeR (otherwise PGM VS will not be available) and `-DPER_DIR=/path/to/libPeR/install/dir` to allow finding the libPeR library (in that order)
-- `differentiableImage`: to compute the initial lambda_g based on the differentiability of desired and starting image (https://github.com/GuicarMIS/differentiableImage/tree/toDual). If you don't want to use this, remove it in the cmake.
+- `differentiableImage`: to compute the initial lambda_g based on the differentiability of desired and starting image (https://github.com/isri-aist/differentiableImage). If you don't want to use this, remove it in the cmake.
 ```bash 
 cd ~/catkin_ws/src/
 git clone https://github.com/GuicarMIS/DHPGMVS
