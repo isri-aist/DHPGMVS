@@ -1,0 +1,7 @@
+string desired_image_path_right
+string init_image_path_right
+string mask
+string desired_image_path_left
+string init_image_path_left
+---
+float64 lambda_g

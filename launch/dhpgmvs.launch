@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<launch>
+
+  <!-- ROBOT'S FLANGE TO RIGHT CAMERA TRANSFORM -->
+  <!-- before ur10(to wrist): -0.021 0.15 0.000 -0.5 -0.5 0.5 0.5 -->
+  <node pkg="tf" type="static_transform_publisher" name="flange2rightcamera" args="0.021 0.000 0.10 0.5 -0.5 0.5 0.5 /right_camera /flange 1"/>  <!--Camera2tool (directly) -->
+
+
+  <!-- ROBOT'S FLANGE TO RIGHT CAMERA TRANSFORM -->
+  <!-- before ur10(to wrist): 0.021 0.15 0.000 0.5 0.5 0.5 0.5 -->
+  <node pkg="tf" type="static_transform_publisher" name="flange2leftcamera" args="-0.021 0.000 0.10 -0.5 -0.5 0.5 -0.5 /left_camera /flange 1"/>
+
+  <!-- DUAL-HEMISPHERICAL PHOTOMETRIC GAUSSIAN MIXTURE-BASED VISUAL SERVOING-->
+  <arg name="verbose" value="0"/>
+  <arg name="gain" value="0.9"/>
+  <arg name="Z" value="1.0"/>
+  <!-- <arg name="lambda_g" value="1.5"/> -->
+  <arg name="robust" value="false"/>
+
+  <node pkg="dhpgmvs" type="dhpgmvs" name="dhpgmvs_node" output="screen" respawn="false" clear_params="true">
+    <remap from="/dhpgmvs/right_camera/camera_info" to="/insta360/right/camera_info"/>
+    <remap from="/dhpgmvs/left_camera/camera_info"  to="/insta360/left/camera_info"/>
+    <remap from="/dhpgmvs/right_camera/image_raw"   to="/insta360/right/image_raw"/>
+    <remap from="/dhpgmvs/left_camera/image_raw"    to="/insta360/left/image_raw"/>
+    <remap from="/dhpgmvs/robot/get_pose"           to="/camera_link_controller/pose"/>
+    <remap from="/dhpgmvs/robot/set_velocity"       to="/twist_controller/command"/>
+
+    <param name="gain" value="$(arg gain)"/>
+    <param name="verbose" value="$(arg verbose)"/>
+    <param name="Z" value="$(arg Z)"/>
+    <!-- <param name="lambda_g" value="$(arg lambda_g)"/> -->
+    <param name="robust" value="$(arg robust)"/>
+
+    <param name="controlInBaseFrame" type="bool" value="true"/>
+    <param name="cameraPoseTopic" type="string" value="/tf"/>
+
+    <param name="rosbagForEVS" type="bool" value="true"/>
+    <param name="desiredPoseTopicForEVS" type="string" value="/vs/camera/desired_pose"/>
+    <param name="currentPoseTopicForEVS" type="string" value="/vs/camera/current_pose"/>
+    <param name="twoStepVS" type="bool" value="false"/>
+    <param name="costTopic" type="string" value="/costTopic"/>
+    <param name="saveExperimentData" type="bool" value="true"/>
+    <param name="logs" type="string" value="$(env HOME)/.ros/ros_dvs_bridge/"/>
+
+  </node>
+
+</launch>
